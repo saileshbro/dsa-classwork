@@ -261,3 +261,105 @@ def miller_rabin(n, k=5):
 2. Debugging can be challenging
 3. May need good random number generators
 4. Not suitable for critical applications requiring deterministic results
+
+# Non-deterministic Algorithms
+
+Non-deterministic algorithms are theoretical constructs that help in understanding complexity classes, particularly in the context of NP problems.
+
+## Definition
+
+A non-deterministic algorithm is a theoretical model of computation where:
+- The algorithm can make guesses during execution
+- Each guess creates a new branch of computation
+- The algorithm accepts if any branch leads to acceptance
+
+## Key Concepts
+
+1. **Guessing Stage**
+   - Makes arbitrary choices
+   - Creates multiple parallel paths of execution
+   - Each path represents a potential solution
+
+2. **Verification Stage**
+   - Deterministically checks if the guessed solution is correct
+   - Must complete in polynomial time for NP problems
+   - Only one path needs to lead to acceptance
+
+## Characteristics
+
+1. **Parallelism**
+   - Conceptually executes all possible paths simultaneously
+   - Can be viewed as infinite parallelism
+   - Not physically realizable
+
+2. **Time Complexity**
+   - Measured by the length of the longest path
+   - Ignores the number of parallel paths
+   - Critical for defining complexity classes
+
+## Applications in Complexity Theory
+
+1. **NP Class Definition**
+   - Problems solvable by non-deterministic algorithms in polynomial time
+   - Encompasses both P and NP-complete problems
+   - Central to the P vs NP question
+
+2. **Proof Techniques**
+   - Used to prove membership in NP
+   - Helps in understanding problem complexity
+   - Useful for reduction proofs
+
+## Examples
+
+1. **Boolean Satisfiability (SAT)**
+   - Guess: Assignment of variables
+   - Verify: Check if formula is satisfied
+
+2. **Hamiltonian Cycle**
+   - Guess: Sequence of vertices
+   - Verify: Check if it forms a valid Hamiltonian cycle
+
+3. **Graph Coloring**
+   - Guess: Color assignment to vertices
+   - Verify: Check if no adjacent vertices have same color
+
+## Practical Implications
+
+1. **Algorithm Design**
+   - Inspiration for randomized algorithms
+   - Basis for probabilistic methods
+   - Guide for heuristic development
+
+2. **Problem Solving**
+   - Divide into guess and verify phases
+   - Focus on verification efficiency
+   - Develop probabilistic approximations
+
+## Relationship with Other Concepts
+
+1. **Deterministic vs Non-deterministic**
+   - Deterministic: Single execution path
+   - Non-deterministic: Multiple possible paths
+   - P = NP question relates these concepts
+
+2. **Randomized Algorithms**
+   - Practical approximation of non-determinism
+   - Uses random choices instead of guesses
+   - Often provides efficient approximate solutions
+
+## Implementation Strategies
+
+1. **Las Vegas Algorithms**
+   - Always give correct results
+   - Running time is random
+   - Example: Randomized Quicksort
+
+2. **Monte Carlo Algorithms**
+   - Fixed running time
+   - May give incorrect results
+   - Error probability can be controlled
+
+3. **Hybrid Approaches**
+   - Combine deterministic and randomized methods
+   - Balance accuracy and efficiency
+   - Practical for real-world applications

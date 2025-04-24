@@ -9,8 +9,95 @@ Items:
 """
 import matplotlib.pyplot as plt
 import numpy as np
-from typing import List, Tuple
+from typing import List, Tuple, Dict, NamedTuple
+from dataclasses import dataclass
 import networkx as nx
+
+@dataclass
+class KnapsackItem:
+    weight: int
+    value: int
+    represents: str  # The variable this item represents (e.g., "x1" or "NOT x1")
+
+class ThreeSATToKnapsack:
+    def __init__(self, num_variables: int, clauses: List[List[Tuple[str, bool]]]):
+        self.num_variables = num_variables
+        self.clauses = clauses
+
+    def create_knapsack_instance(self):
+        """
+        Convert 3-SAT instance to Knapsack instance
+        Returns: (items, target_weight, target_value)
+        """
+        items = []
+
+        # Create items for each variable and its negation
+        for i in range(1, self.num_variables + 1):
+            weight = 2**i
+            # Item for positive literal
+            items.append(KnapsackItem(
+                weight=weight,
+                value=weight,
+                represents=f"x{i}"
+            ))
+            # Item for negative literal
+            items.append(KnapsackItem(
+                weight=weight,
+                value=weight,
+                represents=f"NOT x{i}"
+            ))
+
+        # Calculate target weight/value
+        target = sum(2**i for i in range(1, self.num_variables + 1))
+
+        return items, target, target
+
+    def interpret_knapsack_solution(self,
+                                  selected_items: List[KnapsackItem]) -> Dict[str, bool]:
+        """
+        Convert Knapsack solution back to 3-SAT assignment
+        """
+        assignment = {}
+        for item in selected_items:
+            var = item.represents
+            if var.startswith("NOT "):
+                var_name = var.replace("NOT ", "")
+                assignment[var_name] = False
+            else:
+                assignment[var] = True
+        return assignment
+
+def solve_knapsack(items: List[KnapsackItem],
+                  target_weight: int,
+                  target_value: int) -> List[KnapsackItem]:
+    """
+    Solve Knapsack instance using dynamic programming
+    """
+    n = len(items)
+    # dp[i][w] stores max value achievable using first i items and weight <= w
+    dp = [[0] * (target_weight + 1) for _ in range(n + 1)]
+    # Keep track of selected items
+    selected = [[[] for _ in range(target_weight + 1)] for _ in range(n + 1)]
+
+    for i in range(1, n + 1):
+        for w in range(target_weight + 1):
+            item = items[i-1]
+            if item.weight <= w:
+                val_with_item = dp[i-1][w-item.weight] + item.value
+                if val_with_item > dp[i-1][w]:
+                    dp[i][w] = val_with_item
+                    selected[i][w] = selected[i-1][w-item.weight] + [item]
+                else:
+                    dp[i][w] = dp[i-1][w]
+                    selected[i][w] = selected[i-1][w]
+            else:
+                dp[i][w] = dp[i-1][w]
+                selected[i][w] = selected[i-1][w]
+
+    # Return selected items that achieve target value
+    if dp[n][target_weight] == target_value:
+        return selected[n][target_weight]
+    return []
 
 def knapsack_dynamic_programming(values, weights, capacity):
     """
@@ -273,7 +360,7 @@ def visualize_dp_table(dp: List[List[int]], values: List[int], weights: List[int
     plt.savefig(filename)
     plt.close()
 
-if __name__ == "__main__":
+def main():
     # Example data from the comments
     values = [60, 100, 120]
     weights = [10, 20, 30]
@@ -303,3 +390,45 @@ if __name__ == "__main__":
     print("Tree visualization saved as 'knapsack_dp_tree.png'")
 
     print_solution_details(values, weights, capacity, items_included)
+
+    # Example 3-SAT formula: (x₁ ∨ x₂ ∨ ¬x₃) ∧ (¬x₁ ∨ x₂ ∨ x₃)
+    clauses = [
+        [("x1", True), ("x2", True), ("x3", False)],
+        [("x1", False), ("x2", True), ("x3", True)]
+    ]
+
+    # Create and solve reduction
+    reducer = ThreeSATToKnapsack(num_variables=3, clauses=clauses)
+    items, target_weight, target_value = reducer.create_knapsack_instance()
+
+    print("3-SAT to Knapsack Reduction Example")
+    print("\nOriginal 3-SAT formula:")
+    for clause in clauses:
+        clause_str = " ∨ ".join(f"{'¬' if not pos else ''}{var}" for var, pos in clause)
+        print(f"({clause_str})")
+
+    print("\nKnapsack Instance:")
+    print(f"Target Weight = {target_weight}")
+    print(f"Target Value = {target_value}")
+    print("\nItems:")
+    for item in items:
+        print(f"{item.represents}: (weight={item.weight}, value={item.value})")
+
+    # Solve Knapsack instance
+    solution = solve_knapsack(items, target_weight, target_value)
+
+    if solution:
+        print("\nKnapsack Solution:")
+        for item in solution:
+            print(f"Selected: {item.represents}")
+
+        # Convert back to 3-SAT solution
+        sat_assignment = reducer.interpret_knapsack_solution(solution)
+        print("\n3-SAT Solution:")
+        for var, val in sorted(sat_assignment.items()):
+            print(f"{var} = {val}")
+    else:
+        print("\nNo solution found")
+
+if __name__ == "__main__":
+    main()

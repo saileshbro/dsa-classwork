@@ -1,160 +1,150 @@
-"""
-Boolean Satisfiability Problem (SAT) with tree pruning
-Example with multiple clauses to demonstrate pruning
-"""
+from typing import List, Tuple, Dict, Optional
+import random
+from time import time
 
-from typing import List, Dict, Optional
-import networkx as nx
-import matplotlib.pyplot as plt
-
-class Node:
-    def __init__(self, assignment: Dict[int, bool], level: int):
-        self.assignment = assignment
-        self.level = level
-        self.pruned = False
-
-    def __str__(self):
-        if not self.assignment:
-            return "Root"
-        return " ".join(f"x{k}={'1' if v else '0'}" for k, v in sorted(self.assignment.items()))
-
-class SATSolver:
-    def __init__(self, num_variables: int, clauses: List[List[tuple]]):
+class ThreeSAT:
+    def __init__(self, num_variables: int, num_clauses: int):
         self.num_variables = num_variables
-        self.clauses = clauses
-        self.tree_output = []
-        self.solution_found = False
-        self.nodes_explored = 0
-        self.nodes_pruned = 0
+        self.num_clauses = num_clauses
+        self.clauses: List[List[Tuple[str, bool]]] = []
 
-    def evaluate_clause(self, clause: List[tuple], assignment: Dict[int, bool]) -> bool:
+    def generate_random_instance(self) -> None:
+        """Generate a random 3-SAT instance"""
+        self.clauses = []
+        for _ in range(self.num_clauses):
+            # Choose 3 distinct variables for this clause
+            vars = random.sample(range(1, self.num_variables + 1), 3)
+            # Randomly choose whether each variable is negated
+            clause = [(f'x{v}', random.choice([True, False])) for v in vars]
+            self.clauses.append(clause)
+
+    def calculate_ratio(self) -> float:
+        """Calculate the clause-to-variable ratio"""
+        return self.num_clauses / self.num_variables
+
+    def estimate_difficulty(self) -> str:
+        """Estimate instance difficulty based on ratio"""
+        ratio = self.calculate_ratio()
+        if ratio < 4.0:
+            return "Likely easy (under-constrained)"
+        elif 4.0 <= ratio <= 4.5:
+            return "Likely hard (phase transition region)"
+        else:
+            return "May be easier (over-constrained)"
+
+    def evaluate_clause(self, clause: List[Tuple[str, bool]], assignment: Dict[str, bool]) -> bool:
+        """Evaluate if a clause is satisfied under the given assignment"""
         for var, is_positive in clause:
             if var in assignment:
-                if is_positive and assignment[var]:
+                value = assignment[var]
+                if is_positive and value:
                     return True
-                if not is_positive and not assignment[var]:
+                if not is_positive and not value:
                     return True
         return False
 
-    def is_satisfiable(self, assignment: Dict[int, bool]) -> bool:
+    def is_satisfied(self, assignment: Dict[str, bool]) -> bool:
+        """Check if all clauses are satisfied"""
         return all(self.evaluate_clause(clause, assignment) for clause in self.clauses)
 
-    def can_be_satisfied(self, assignment: Dict[int, bool]) -> bool:
-        """Check if partial assignment can potentially lead to a solution"""
-        for clause in self.clauses:
-            clause_can_be_true = False
-            for var, is_positive in clause:
-                if var in assignment:
-                    if (is_positive and assignment[var]) or (not is_positive and not assignment[var]):
-                        clause_can_be_true = True
-                        break
-                else:
-                    clause_can_be_true = True
-                    break
-            if not clause_can_be_true:
-                return False
-        return True
-
-    def print_tree_node(self, node: Node, prefix: str, is_last: bool, pruned: bool = False, reason: str = ""):
-        """Print a single node of the tree"""
-        marker = "└── " if is_last else "├── "
-        status = ""
-        if pruned:
-            status = f" (pruned: {reason})"
-        elif self.solution_found and len(node.assignment) == self.num_variables:
-            status = " (solution!)"
-        elif len(node.assignment) == self.num_variables:
-            status = " (invalid)"
-
-        self.tree_output.append(f"{prefix}{marker}{str(node)}{status}")
-        return prefix + ("    " if is_last else "│   ")
-
-    def solve(self) -> Optional[Dict[int, bool]]:
-        """Solve the SAT problem with tree pruning and visualization"""
-        self.tree_output = []
-        self.solution_found = False
-        self.nodes_explored = 0
-        self.nodes_pruned = 0
-
-        def backtrack(assignment: Dict[int, bool], level: int, prefix: str = "", is_last: bool = True) -> Optional[Dict[int, bool]]:
-            self.nodes_explored += 1
-            current_node = Node(assignment.copy(), level)
-
-            # Check if we can prune this branch
-            if not self.can_be_satisfied(assignment):
-                self.nodes_pruned += 1
-                clause_num = next(i for i, clause in enumerate(self.clauses, 1)
-                                if not any((var not in assignment or
-                                        (is_positive and assignment[var]) or
-                                        (not is_positive and not assignment[var]))
-                                        for var, is_positive in clause))
-                self.print_tree_node(current_node, prefix, is_last, pruned=True,
-                                   reason=f"clause {clause_num} unsatisfiable")
-                return None
-
-            # If we have a complete assignment, check if it's a solution
+    def solve_dpll(self) -> Tuple[bool, Optional[Dict[str, bool]]]:
+        """Solve using DPLL algorithm"""
+        def dpll_recursive(assignment: Dict[str, bool]) -> Tuple[bool, Optional[Dict[str, bool]]]:
             if len(assignment) == self.num_variables:
-                self.print_tree_node(current_node, prefix, is_last)
-                if self.is_satisfiable(assignment):
-                    self.solution_found = True
-                    return assignment
-                return None
+                return self.is_satisfied(assignment), assignment
 
-            var = level + 1
-            new_prefix = self.print_tree_node(current_node, prefix, is_last)
+            # Choose an unassigned variable
+            for i in range(1, self.num_variables + 1):
+                var = f'x{i}'
+                if var not in assignment:
+                    # Try True first
+                    assignment[var] = True
+                    solved, result = dpll_recursive(assignment.copy())
+                    if solved:
+                        return True, result
 
-            # Try True (1) - left branch
-            assignment[var] = True
-            result = backtrack(assignment.copy(), level + 1, new_prefix, False)
-            if result:
-                return result
+                    # Try False
+                    assignment[var] = False
+                    solved, result = dpll_recursive(assignment.copy())
+                    if solved:
+                        return True, result
 
-            # Try False (0) - right branch
-            assignment[var] = False
-            result = backtrack(assignment.copy(), level + 1, new_prefix, True)
-            if result:
-                return result
+                    del assignment[var]
+                    break
 
-            return None
+            return False, None
 
-        solution = backtrack({}, 0)
+        return dpll_recursive({})
 
-        # Print the tree visualization with statistics
-        print("\nState Space Tree (with pruning):")
-        print("--------------------------------")
-        for line in self.tree_output:
-            print(line)
-        print("--------------------------------")
-        print(f"Nodes explored: {self.nodes_explored}")
-        print(f"Nodes pruned: {self.nodes_pruned}")
-        print(f"Efficiency: {(self.nodes_pruned / self.nodes_explored * 100):.1f}% of nodes pruned")
+    def solve_random_walk(self, max_tries: int = 1000, max_flips: int = 1000) -> Tuple[bool, Optional[Dict[str, bool]]]:
+        """Solve using random walk algorithm (WalkSAT)"""
+        for _ in range(max_tries):
+            # Random initial assignment
+            assignment = {f'x{i}': random.choice([True, False])
+                        for i in range(1, self.num_variables + 1)}
 
-        return solution
+            for _ in range(max_flips):
+                if self.is_satisfied(assignment):
+                    return True, assignment
+
+                # Find unsatisfied clauses
+                unsat_clauses = [clause for clause in self.clauses
+                               if not self.evaluate_clause(clause, assignment)]
+                if not unsat_clauses:
+                    return True, assignment
+
+                # Pick a random unsatisfied clause
+                clause = random.choice(unsat_clauses)
+
+                # Flip a random variable in this clause
+                var, _ = random.choice(clause)
+                assignment[var] = not assignment[var]
+
+        return False, None
 
 def main():
-    # Example with contradictory clauses to show pruning:
-    # (x1 ∨ x2) ∧ (¬x1 ∨ x2) ∧ (x1 ∨ ¬x2) ∧ (¬x2 ∨ x3) ∧ (¬x2 ∨ ¬x3)
-    print("SAT Formula:")
-    print("(x1 ∨ x2) ∧ (¬x1 ∨ x2) ∧ (x1 ∨ ¬x2) ∧ (¬x2 ∨ x3) ∧ (¬x2 ∨ ¬x3)")
-    print()
+    # Example usage
+    num_vars = 20
+    num_clauses = 85  # Ratio ≈ 4.27 (phase transition)
 
-    num_variables = 3
-    clauses = [
-        [(1, True), (2, True)],      # x1 v x2
-        [(1, False), (2, True)],     # ~x1 v x2
-        [(1, True), (2, False)],     # x1 v ~x2
-        [(2, False), (3, True)],     # ~x2 v x3
-        [(2, False), (3, False)]     # ~x2 v ~x3
-    ]
+    sat_instance = ThreeSAT(num_vars, num_clauses)
+    sat_instance.generate_random_instance()
 
-    solver = SATSolver(num_variables, clauses)
-    solution = solver.solve()
+    print(f"3-SAT Instance:")
+    print(f"Number of variables: {num_vars}")
+    print(f"Number of clauses: {num_clauses}")
+    print(f"Clause/Variable ratio: {sat_instance.calculate_ratio():.2f}")
+    print(f"Difficulty estimate: {sat_instance.estimate_difficulty()}")
+    print("\nClauses:")
+    for i, clause in enumerate(sat_instance.clauses, 1):
+        clause_str = " ∨ ".join(f"{'¬' if not pos else ''}{var}" for var, pos in clause)
+        print(f"{i}. ({clause_str})")
 
-    if solution:
-        print("\nSAT Problem is satisfiable!")
-        print("Solution:", {f"x{k}": v for k, v in solution.items()})
+    print("\nSolving using DPLL...")
+    start_time = time()
+    is_sat, assignment = sat_instance.solve_dpll()
+    dpll_time = time() - start_time
+
+    if is_sat:
+        print(f"Solution found in {dpll_time:.3f} seconds!")
+        print("Satisfying assignment:")
+        for var, val in sorted(assignment.items()):
+            print(f"{var} = {val}")
     else:
-        print("\nSAT Problem is unsatisfiable!")
+        print("No solution exists (unsatisfiable)")
+
+    print("\nSolving using Random Walk...")
+    start_time = time()
+    is_sat, assignment = sat_instance.solve_random_walk()
+    walk_time = time() - start_time
+
+    if is_sat:
+        print(f"Solution found in {walk_time:.3f} seconds!")
+        print("Satisfying assignment:")
+        for var, val in sorted(assignment.items()):
+            print(f"{var} = {val}")
+    else:
+        print("No solution found (may still be satisfiable)")
 
 if __name__ == "__main__":
     main()
