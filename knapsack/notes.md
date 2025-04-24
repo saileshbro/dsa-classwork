@@ -141,3 +141,275 @@ Target Value = 14
    - Shows relationship between:
      - Decision problems (3-SAT)
      - Optimization problems (Knapsack)
+
+# Knapsack Problem
+
+## Problem Variants
+
+### 1. 0/1 Knapsack
+- Each item can be taken or left
+- Items cannot be divided
+- NP-hard optimization problem
+- Classic dynamic programming example
+
+### 2. Fractional Knapsack
+- Items can be divided
+- Solvable in polynomial time
+- Greedy algorithm optimal
+- Also called continuous knapsack
+
+### 3. Bounded Knapsack
+- Limited number of each item
+- Generalizes 0/1 knapsack
+- Similar dynamic programming solution
+- Applications in resource allocation
+
+## Algorithms
+
+### 1. Dynamic Programming Solution (0/1 Knapsack)
+```python
+def knapsack_01(values, weights, capacity):
+    """
+    Solve 0/1 knapsack using dynamic programming
+    Time: O(nW), Space: O(nW)
+    where n is number of items, W is capacity
+    """
+    n = len(values)
+    dp = [[0] * (capacity + 1) for _ in range(n + 1)]
+
+    for i in range(1, n + 1):
+        for w in range(capacity + 1):
+            if weights[i-1] <= w:
+                dp[i][w] = max(dp[i-1][w],
+                              dp[i-1][w-weights[i-1]] + values[i-1])
+            else:
+                dp[i][w] = dp[i-1][w]
+
+    return dp[n][capacity]
+
+def reconstruct_solution(dp, weights, capacity):
+    """
+    Reconstruct items chosen in optimal solution
+    """
+    n = len(weights)
+    w = capacity
+    items = []
+
+    for i in range(n, 0, -1):
+        if dp[i][w] != dp[i-1][w]:
+            items.append(i-1)
+            w -= weights[i-1]
+
+    return items[::-1]
+```
+
+### 2. Memory-Efficient Version
+```python
+def knapsack_01_efficient(values, weights, capacity):
+    """
+    Space-efficient version using only O(W) space
+    """
+    n = len(values)
+    dp = [0] * (capacity + 1)
+
+    for i in range(n):
+        for w in range(capacity, weights[i]-1, -1):
+            dp[w] = max(dp[w],
+                       dp[w-weights[i]] + values[i])
+
+    return dp[capacity]
+```
+
+### 3. Branch and Bound Solution
+```python
+def knapsack_branch_bound(values, weights, capacity):
+    """
+    Branch and bound solution for 0/1 knapsack
+    Uses upper bound from fractional knapsack
+    """
+    n = len(values)
+    best_value = 0
+    best_solution = []
+
+    def bound(k, value, weight, taken):
+        """Compute upper bound for remaining capacity"""
+        if weight >= capacity:
+            return 0
+
+        bound_value = value
+        j = k
+        totweight = weight
+
+        while j < n and totweight + weights[j] <= capacity:
+            bound_value += values[j]
+            totweight += weights[j]
+            j += 1
+
+        if j < n:
+            bound_value += (capacity - totweight) * \
+                          (values[j] / weights[j])
+
+        return bound_value
+
+    def branch(k, value, weight, taken):
+        nonlocal best_value, best_solution
+
+        if weight <= capacity and value > best_value:
+            best_value = value
+            best_solution = taken[:]
+
+        if k >= n:
+            return
+
+        if bound(k, value, weight, taken) <= best_value:
+            return
+
+        # Include item k
+        taken.append(k)
+        branch(k + 1,
+               value + values[k],
+               weight + weights[k],
+               taken)
+        taken.pop()
+
+        # Exclude item k
+        branch(k + 1, value, weight, taken)
+
+    branch(0, 0, 0, [])
+    return best_value, best_solution
+```
+
+### 4. Approximation Scheme
+```python
+def fptas_knapsack(values, weights, capacity, epsilon):
+    """
+    Fully Polynomial Time Approximation Scheme
+    Guarantees (1-ε) optimal solution
+    Running time: O(n²/ε)
+    """
+    n = len(values)
+    P = max(values)  # Maximum value
+    K = (epsilon * P) / n  # Scaling factor
+
+    # Scale values
+    scaled_values = [int(v/K) for v in values]
+
+    # Solve with scaled values
+    dp = knapsack_01(scaled_values, weights, capacity)
+
+    # Return approximate solution
+    return dp * K
+```
+
+## Applications
+
+### 1. Resource Allocation
+- Budget allocation
+- Project selection
+- Investment portfolio
+
+### 2. Logistics
+- Cargo loading
+- Vehicle packing
+- Warehouse storage
+
+### 3. Computing
+- Memory management
+- Task scheduling
+- Cloud resource allocation
+
+## Implementation Considerations
+
+### 1. Data Structures
+```python
+class Item:
+    def __init__(self, value, weight):
+        self.value = value
+        self.weight = weight
+        self.ratio = value / weight  # For fractional
+
+class Knapsack:
+    def __init__(self, capacity):
+        self.capacity = capacity
+        self.items = []
+        self.total_value = 0
+        self.total_weight = 0
+```
+
+### 2. Optimization Techniques
+- Sort by value/weight ratio
+- Use binary representation
+- Implement early stopping
+
+### 3. Memory Management
+- Rolling arrays
+- Bit manipulation
+- Sparse table techniques
+
+## Special Cases
+
+### 1. Equal Weights
+- Reduces to selection problem
+- Can be solved in O(n)
+- Sort by value and take best fitting
+
+### 2. Equal Values
+- Minimize weight for given value
+- Can be solved greedily
+- Important in bin packing
+
+### 3. Small Numbers
+- Pseudo-polynomial time
+- Exact solutions practical
+- Use standard dynamic programming
+
+## Research Directions
+
+### 1. Online Algorithms
+- Streaming data
+- Real-time decisions
+- Limited information
+
+### 2. Parallel Approaches
+- GPU acceleration
+- Distributed algorithms
+- Multi-core optimization
+
+### 3. Machine Learning
+- Learning good heuristics
+- Neural network solutions
+- Hybrid approaches
+
+## Best Practices
+
+### 1. Problem Analysis
+- Identify constraints
+- Consider special cases
+- Choose appropriate variant
+
+### 2. Algorithm Selection
+- Consider input size
+- Memory constraints
+- Accuracy requirements
+
+### 3. Testing
+- Generate test cases
+- Verify optimality
+- Measure performance
+
+## Future Trends
+
+### 1. Quantum Computing
+- Quantum algorithms
+- Superposition-based solutions
+- Hybrid classical-quantum
+
+### 2. Bio-inspired Approaches
+- Genetic algorithms
+- Ant colony optimization
+- Particle swarm optimization
+
+### 3. Applications
+- Smart logistics
+- Resource optimization
+- Financial planning

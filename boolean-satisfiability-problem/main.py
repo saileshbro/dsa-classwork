@@ -1,150 +1,478 @@
-from typing import List, Tuple, Dict, Optional
+"""
+Boolean Satisfiability Problem (SAT) Solver Implementation
+Including DPLL, CDCL, and local search approaches
+"""
+
+from typing import List, Dict, Set, Optional, Tuple
+from dataclasses import dataclass
+from collections import defaultdict
 import random
-from time import time
+import time
 
-class ThreeSAT:
-    def __init__(self, num_variables: int, num_clauses: int):
-        self.num_variables = num_variables
-        self.num_clauses = num_clauses
-        self.clauses: List[List[Tuple[str, bool]]] = []
+@dataclass
+class Literal:
+    variable: int
+    positive: bool
 
-    def generate_random_instance(self) -> None:
-        """Generate a random 3-SAT instance"""
-        self.clauses = []
-        for _ in range(self.num_clauses):
-            # Choose 3 distinct variables for this clause
-            vars = random.sample(range(1, self.num_variables + 1), 3)
-            # Randomly choose whether each variable is negated
-            clause = [(f'x{v}', random.choice([True, False])) for v in vars]
-            self.clauses.append(clause)
+    def __neg__(self):
+        return Literal(self.variable, not self.positive)
 
-    def calculate_ratio(self) -> float:
-        """Calculate the clause-to-variable ratio"""
-        return self.num_clauses / self.num_variables
+    def __str__(self):
+        return f"{'' if self.positive else '¬'}x{self.variable}"
 
-    def estimate_difficulty(self) -> str:
-        """Estimate instance difficulty based on ratio"""
-        ratio = self.calculate_ratio()
-        if ratio < 4.0:
-            return "Likely easy (under-constrained)"
-        elif 4.0 <= ratio <= 4.5:
-            return "Likely hard (phase transition region)"
-        else:
-            return "May be easier (over-constrained)"
+@dataclass
+class Clause:
+    literals: List[Literal]
 
-    def evaluate_clause(self, clause: List[Tuple[str, bool]], assignment: Dict[str, bool]) -> bool:
-        """Evaluate if a clause is satisfied under the given assignment"""
-        for var, is_positive in clause:
-            if var in assignment:
-                value = assignment[var]
-                if is_positive and value:
-                    return True
-                if not is_positive and not value:
-                    return True
-        return False
+    def __str__(self):
+        return "(" + " ∨ ".join(str(lit) for lit in self.literals) + ")"
 
-    def is_satisfied(self, assignment: Dict[str, bool]) -> bool:
-        """Check if all clauses are satisfied"""
-        return all(self.evaluate_clause(clause, assignment) for clause in self.clauses)
+class CNFFormula:
+    def __init__(self, clauses: List[Clause]):
+        self.clauses = clauses
+        self.num_vars = max(
+            lit.variable for clause in clauses
+            for lit in clause.literals
+        )
 
-    def solve_dpll(self) -> Tuple[bool, Optional[Dict[str, bool]]]:
-        """Solve using DPLL algorithm"""
-        def dpll_recursive(assignment: Dict[str, bool]) -> Tuple[bool, Optional[Dict[str, bool]]]:
-            if len(assignment) == self.num_variables:
-                return self.is_satisfied(assignment), assignment
+    def evaluate(self, assignment: Dict[int, bool]) -> bool:
+        """Evaluate formula under given assignment"""
+        return all(
+            any(lit.positive == assignment.get(lit.variable, False)
+                for lit in clause.literals)
+            for clause in self.clauses
+        )
 
-            # Choose an unassigned variable
-            for i in range(1, self.num_variables + 1):
-                var = f'x{i}'
-                if var not in assignment:
-                    # Try True first
-                    assignment[var] = True
-                    solved, result = dpll_recursive(assignment.copy())
-                    if solved:
-                        return True, result
+    def __str__(self):
+        return " ∧ ".join(str(clause) for clause in self.clauses)
 
-                    # Try False
-                    assignment[var] = False
-                    solved, result = dpll_recursive(assignment.copy())
-                    if solved:
-                        return True, result
+class DPLLSolver:
+    """
+    Davis-Putnam-Logemann-Loveland (DPLL) Algorithm
+    Complete SAT solver using backtracking
+    """
+    def __init__(self, formula: CNFFormula):
+        self.formula = formula
+        self.assignment: Dict[int, bool] = {}
 
-                    del assignment[var]
-                    break
+    def solve(self) -> Optional[Dict[int, bool]]:
+        """Return satisfying assignment or None if UNSAT"""
+        return self._dpll(self.formula.clauses.copy())
 
-            return False, None
+    def _dpll(self,
+             clauses: List[Clause]) -> Optional[Dict[int, bool]]:
+        """Recursive DPLL procedure"""
+        # Unit propagation
+        while True:
+            unit_clauses = [c for c in clauses if len(c.literals) == 1]
+            if not unit_clauses:
+                break
 
-        return dpll_recursive({})
+            # Propagate unit literal
+            lit = unit_clauses[0].literals[0]
+            self.assignment[lit.variable] = lit.positive
 
-    def solve_random_walk(self, max_tries: int = 1000, max_flips: int = 1000) -> Tuple[bool, Optional[Dict[str, bool]]]:
-        """Solve using random walk algorithm (WalkSAT)"""
-        for _ in range(max_tries):
-            # Random initial assignment
-            assignment = {f'x{i}': random.choice([True, False])
-                        for i in range(1, self.num_variables + 1)}
+            # Simplify formula
+            clauses = self._simplify(clauses, lit)
 
-            for _ in range(max_flips):
-                if self.is_satisfied(assignment):
-                    return True, assignment
+            if not clauses:  # All clauses satisfied
+                return self.assignment
+            if any(not c.literals for c in clauses):  # Empty clause
+                return None
 
-                # Find unsatisfied clauses
-                unsat_clauses = [clause for clause in self.clauses
-                               if not self.evaluate_clause(clause, assignment)]
-                if not unsat_clauses:
-                    return True, assignment
+        # Pure literal elimination
+        pure_lits = self._find_pure_literals(clauses)
+        if pure_lits:
+            for lit in pure_lits:
+                self.assignment[lit.variable] = lit.positive
+                clauses = self._simplify(clauses, lit)
 
-                # Pick a random unsatisfied clause
-                clause = random.choice(unsat_clauses)
+            if not clauses:  # All clauses satisfied
+                return self.assignment
 
-                # Flip a random variable in this clause
-                var, _ = random.choice(clause)
-                assignment[var] = not assignment[var]
+        # Choose variable and branch
+        if not clauses:
+            return self.assignment
 
-        return False, None
+        var = self._choose_variable(clauses)
 
-def main():
-    # Example usage
-    num_vars = 20
-    num_clauses = 85  # Ratio ≈ 4.27 (phase transition)
+        # Try True
+        self.assignment[var] = True
+        new_clauses = self._simplify(
+            clauses,
+            Literal(var, True)
+        )
+        result = self._dpll(new_clauses)
+        if result is not None:
+            return result
 
-    sat_instance = ThreeSAT(num_vars, num_clauses)
-    sat_instance.generate_random_instance()
+        # Try False
+        self.assignment[var] = False
+        new_clauses = self._simplify(
+            clauses,
+            Literal(var, False)
+        )
+        return self._dpll(new_clauses)
 
-    print(f"3-SAT Instance:")
-    print(f"Number of variables: {num_vars}")
-    print(f"Number of clauses: {num_clauses}")
-    print(f"Clause/Variable ratio: {sat_instance.calculate_ratio():.2f}")
-    print(f"Difficulty estimate: {sat_instance.estimate_difficulty()}")
-    print("\nClauses:")
-    for i, clause in enumerate(sat_instance.clauses, 1):
-        clause_str = " ∨ ".join(f"{'¬' if not pos else ''}{var}" for var, pos in clause)
-        print(f"{i}. ({clause_str})")
+    def _simplify(self,
+                 clauses: List[Clause],
+                 lit: Literal) -> List[Clause]:
+        """Simplify formula by assigning literal"""
+        result = []
+        for clause in clauses:
+            # Skip satisfied clauses
+            if any(l.variable == lit.variable and
+                   l.positive == lit.positive
+                   for l in clause.literals):
+                continue
 
-    print("\nSolving using DPLL...")
-    start_time = time()
-    is_sat, assignment = sat_instance.solve_dpll()
-    dpll_time = time() - start_time
+            # Remove falsified literals
+            new_lits = [l for l in clause.literals
+                       if l.variable != lit.variable]
+            if new_lits:
+                result.append(Clause(new_lits))
 
-    if is_sat:
-        print(f"Solution found in {dpll_time:.3f} seconds!")
-        print("Satisfying assignment:")
-        for var, val in sorted(assignment.items()):
-            print(f"{var} = {val}")
-    else:
-        print("No solution exists (unsatisfiable)")
+        return result
 
-    print("\nSolving using Random Walk...")
-    start_time = time()
-    is_sat, assignment = sat_instance.solve_random_walk()
-    walk_time = time() - start_time
+    def _find_pure_literals(self,
+                          clauses: List[Clause]) -> List[Literal]:
+        """Find pure literals in formula"""
+        polarities = defaultdict(set)
+        for clause in clauses:
+            for lit in clause.literals:
+                polarities[lit.variable].add(lit.positive)
 
-    if is_sat:
-        print(f"Solution found in {walk_time:.3f} seconds!")
-        print("Satisfying assignment:")
-        for var, val in sorted(assignment.items()):
-            print(f"{var} = {val}")
-    else:
-        print("No solution found (may still be satisfiable)")
+        return [Literal(var, next(iter(pols)))
+                for var, pols in polarities.items()
+                if len(pols) == 1]
+
+    def _choose_variable(self,
+                       clauses: List[Clause]) -> int:
+        """Choose next variable for branching"""
+        # Use VSIDS (Variable State Independent Decaying Sum)
+        scores = defaultdict(int)
+        for clause in clauses:
+            for lit in clause.literals:
+                scores[lit.variable] += 1
+
+        return max(scores.keys(),
+                  key=lambda v: scores[v])
+
+class CDCLSolver:
+    """
+    Conflict-Driven Clause Learning (CDCL)
+    Modern complete SAT solver
+    """
+    def __init__(self, formula: CNFFormula):
+        self.formula = formula
+        self.assignment: Dict[int, bool] = {}
+        self.level: Dict[int, int] = {}  # Decision level
+        self.antecedent: Dict[int, Clause] = {}  # Reason for propagation
+        self.learned_clauses: List[Clause] = []
+
+    def solve(self) -> Optional[Dict[int, bool]]:
+        """Return satisfying assignment or None if UNSAT"""
+        while True:
+            conflict = self._unit_propagate()
+            if conflict is None:
+                if len(self.assignment) == self.formula.num_vars:
+                    return self.assignment
+
+                # Make new decision
+                var = self._choose_variable()
+                self._assign(var, True, None, len(self.level))
+
+            else:  # Conflict occurred
+                level = self._analyze_conflict(conflict)
+                if level < 0:  # UNSAT
+                    return None
+                self._backtrack(level)
+
+    def _unit_propagate(self) -> Optional[Clause]:
+        """Perform unit propagation, return conflict if any"""
+        while True:
+            propagated = False
+            for clause in self.formula.clauses + self.learned_clauses:
+                # Count unassigned and satisfied literals
+                unassigned = []
+                sat = False
+                for lit in clause.literals:
+                    if lit.variable not in self.assignment:
+                        unassigned.append(lit)
+                    elif self.assignment[lit.variable] == lit.positive:
+                        sat = True
+                        break
+
+                if sat:
+                    continue
+
+                if not unassigned:  # Conflict
+                    return clause
+
+                if len(unassigned) == 1:  # Unit clause
+                    lit = unassigned[0]
+                    self._assign(lit.variable,
+                               lit.positive,
+                               clause,
+                               max(self._clause_level(clause), 0))
+                    propagated = True
+
+            if not propagated:
+                return None
+
+    def _analyze_conflict(self,
+                        conflict: Clause) -> int:
+        """
+        Analyze conflict and learn new clause
+        Returns backtrack level
+        """
+        curr_level = len(self.level)
+        if curr_level == 0:
+            return -1  # UNSAT
+
+        # Compute First UIP (Unique Implication Point)
+        seen = set()
+        learned_lits = []
+        level_count = 0
+
+        def analyze_literal(lit: Literal):
+            nonlocal level_count
+            var = lit.variable
+            if self.level[var] == curr_level:
+                level_count += 1
+            elif self.level[var] > 0:
+                learned_lits.append(lit)
+
+        queue = [(lit, conflict)
+                for lit in conflict.literals]
+
+        while queue:
+            lit, clause = queue.pop(0)
+            var = lit.variable
+
+            if var not in seen:
+                seen.add(var)
+                if self.level[var] == curr_level:
+                    if var in self.antecedent:
+                        parent = self.antecedent[var]
+                        queue.extend(
+                            (l, parent)
+                            for l in parent.literals
+                            if l.variable != var
+                        )
+                    else:
+                        analyze_literal(lit)
+                else:
+                    learned_lits.append(lit)
+
+        # Add learned clause
+        if learned_lits:
+            clause = Clause(learned_lits)
+            self.learned_clauses.append(clause)
+
+        # Return second highest level
+        levels = sorted({self.level[lit.variable]
+                        for lit in learned_lits})
+        return levels[-2] if len(levels) > 1 else 0
+
+    def _backtrack(self, level: int):
+        """Backtrack to given level"""
+        for var in list(self.assignment):
+            if self.level[var] > level:
+                del self.assignment[var]
+                del self.level[var]
+                if var in self.antecedent:
+                    del self.antecedent[var]
+
+    def _assign(self,
+               var: int,
+               value: bool,
+               antecedent: Optional[Clause],
+               level: int):
+        """Make assignment with reason and level"""
+        self.assignment[var] = value
+        self.level[var] = level
+        if antecedent is not None:
+            self.antecedent[var] = antecedent
+
+    def _clause_level(self, clause: Clause) -> int:
+        """Get highest level in clause"""
+        return max(self.level.get(lit.variable, 0)
+                  for lit in clause.literals)
+
+    def _choose_variable(self) -> int:
+        """Choose next decision variable"""
+        # Use VSIDS heuristic
+        scores = defaultdict(float)
+        decay = 0.95
+
+        for clause in self.formula.clauses + self.learned_clauses:
+            for lit in clause.literals:
+                scores[lit.variable] *= decay
+                scores[lit.variable] += 1
+
+        unassigned = set(range(1, self.formula.num_vars + 1)) - \
+                     set(self.assignment)
+        return max(unassigned,
+                  key=lambda v: scores[v])
+
+class WalkSATSolver:
+    """
+    WalkSAT local search algorithm
+    Incomplete but often effective
+    """
+    def __init__(self,
+                formula: CNFFormula,
+                max_flips: int = 1000,
+                noise: float = 0.5):
+        self.formula = formula
+        self.max_flips = max_flips
+        self.noise = noise
+
+    def solve(self) -> Optional[Dict[int, bool]]:
+        """Try to find satisfying assignment"""
+        # Start with random assignment
+        assignment = {
+            var: random.choice([True, False])
+            for var in range(1, self.formula.num_vars + 1)
+        }
+
+        best_assignment = assignment.copy()
+        best_satisfied = self._count_satisfied(assignment)
+
+        for _ in range(self.max_flips):
+            if best_satisfied == len(self.formula.clauses):
+                return best_assignment
+
+            # Find unsatisfied clause
+            unsat_clauses = [
+                clause for clause in self.formula.clauses
+                if not self._is_satisfied(clause, assignment)
+            ]
+            if not unsat_clauses:
+                return assignment
+
+            clause = random.choice(unsat_clauses)
+
+            if random.random() < self.noise:
+                # Random walk
+                var = random.choice(
+                    [lit.variable for lit in clause.literals]
+                )
+            else:
+                # Greedy move
+                var = min(
+                    (lit.variable for lit in clause.literals),
+                    key=lambda v: self._breaks_count(v, assignment)
+                )
+
+            # Flip variable
+            assignment[var] = not assignment[var]
+
+            # Update best solution
+            satisfied = self._count_satisfied(assignment)
+            if satisfied > best_satisfied:
+                best_assignment = assignment.copy()
+                best_satisfied = satisfied
+
+        return best_assignment if best_satisfied == len(self.formula.clauses) else None
+
+    def _is_satisfied(self,
+                    clause: Clause,
+                    assignment: Dict[int, bool]) -> bool:
+        """Check if clause is satisfied"""
+        return any(
+            lit.positive == assignment[lit.variable]
+            for lit in clause.literals
+        )
+
+    def _count_satisfied(self,
+                       assignment: Dict[int, bool]) -> int:
+        """Count satisfied clauses"""
+        return sum(
+            1 for clause in self.formula.clauses
+            if self._is_satisfied(clause, assignment)
+        )
+
+    def _breaks_count(self,
+                    var: int,
+                    assignment: Dict[int, bool]) -> int:
+        """Count clauses broken by flipping var"""
+        count = 0
+        assignment[var] = not assignment[var]  # Flip
+
+        for clause in self.formula.clauses:
+            was_sat = any(
+                lit.positive == (not assignment[lit.variable])
+                for lit in clause.literals
+                if lit.variable == var
+            )
+            is_sat = self._is_satisfied(clause, assignment)
+            if was_sat and not is_sat:
+                count += 1
+
+        assignment[var] = not assignment[var]  # Flip back
+        return count
+
+def compare_solvers(formula: CNFFormula):
+    """Compare different SAT solving approaches"""
+    solvers = [
+        ("DPLL", DPLLSolver(formula)),
+        ("CDCL", CDCLSolver(formula)),
+        ("WalkSAT", WalkSATSolver(formula))
+    ]
+
+    results = {}
+    print("\nComparing SAT Solvers:")
+    print("-" * 40)
+
+    for name, solver in solvers:
+        start_time = time.time()
+        assignment = solver.solve()
+        elapsed = time.time() - start_time
+
+        results[name] = {
+            'assignment': assignment,
+            'time': elapsed,
+            'sat': assignment is not None,
+            'verified': (assignment is not None and
+                       formula.evaluate(assignment))
+        }
+
+        print(f"\n{name}:")
+        print(f"SAT: {'Yes' if assignment else 'No'}")
+        if assignment:
+            print(f"Assignment: {assignment}")
+        print(f"Time: {elapsed:.4f} seconds")
+        print(f"Verified: {results[name]['verified']}")
+
+    return results
 
 if __name__ == "__main__":
-    main()
+    # Example usage
+    formula = CNFFormula([
+        Clause([Literal(1, True), Literal(2, False)]),
+        Clause([Literal(1, False), Literal(3, True)]),
+        Clause([Literal(2, True), Literal(3, False)]),
+        Clause([Literal(1, True), Literal(3, False)])
+    ])
+
+    print("Formula:", formula)
+    results = compare_solvers(formula)
+
+    # Additional analysis
+    print("\nAnalysis:")
+    print("1. DPLL:")
+    print("   - Complete algorithm")
+    print("   - Good for small instances")
+    print("   - Uses unit propagation")
+
+    print("\n2. CDCL:")
+    print("   - Modern complete solver")
+    print("   - Learns from conflicts")
+    print("   - Better than DPLL in practice")
+
+    print("\n3. WalkSAT:")
+    print("   - Incomplete but fast")
+    print("   - Good for random instances")
+    print("   - May miss solutions")

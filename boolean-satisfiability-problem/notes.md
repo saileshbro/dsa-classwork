@@ -400,3 +400,228 @@ Target Weight = Target Value = 2¹ + 2² + 2³
 ### Implementation of the Reduction
 
 Let's create a practical implementation that shows how to reduce a 3-SAT instance to a Knapsack instance:
+
+# Boolean Satisfiability Problem (SAT)
+
+## Overview
+
+The Boolean Satisfiability Problem (SAT) is a fundamental problem in computer science that asks whether there exists an assignment of boolean values (True/False) to variables that makes a given boolean formula evaluate to True.
+
+## Problem Definition
+
+Given:
+- A boolean formula F in Conjunctive Normal Form (CNF)
+- A set of variables x₁, x₂, ..., xₙ
+
+Find:
+- An assignment of True/False to each variable that makes F true, or
+- Determine that no such assignment exists (UNSAT)
+
+### CNF Format
+A formula in CNF is a conjunction (AND) of clauses, where each clause is a disjunction (OR) of literals:
+```
+F = C₁ ∧ C₂ ∧ ... ∧ Cₘ
+where each Cᵢ = (l₁ ∨ l₂ ∨ ... ∨ lₖ)
+and each lⱼ is either a variable xᵢ or its negation ¬xᵢ
+```
+
+## Solution Approaches
+
+### 1. DPLL (Davis-Putnam-Logemann-Loveland)
+
+#### Key Features:
+- Complete algorithm (guaranteed to find solution if it exists)
+- Recursive backtracking approach
+- Uses unit propagation and pure literal elimination
+
+#### Algorithm Steps:
+    if all_clauses_satisfied(formula, assignment):
+        return True, assignment
+    if any_clause_falsified(formula, assignment):
+        return False, assignment
+
+    # Unit propagation
+    if has_unit_clause(formula):
+        literal = get_unit_literal(formula)
+        assignment[abs(literal)] = literal > 0
+        return dpll(simplify(formula, literal), assignment)
+
+    # Pure literal elimination
+    if has_pure_literal(formula):
+        literal = get_pure_literal(formula)
+        assignment[abs(literal)] = literal > 0
+        return dpll(simplify(formula, literal), assignment)
+
+    # Branching
+    var = choose_variable(formula)
+    # Try True
+    assignment[var] = True
+    sat, new_assignment = dpll(simplify(formula, var),
+                             assignment.copy())
+    if sat:
+        return True, new_assignment
+
+    # Try False
+    assignment[var] = False
+    return dpll(simplify(formula, -var), assignment)
+```
+
+### 2. Modern SAT Solvers
+
+#### CDCL (Conflict-Driven Clause Learning)
+```python
+def cdcl_sat(formula):
+    """
+    Modern SAT solver with conflict learning
+    """
+    assignment = {}
+    learned_clauses = []
+    decision_level = 0
+
+    while not all_assigned(formula, assignment):
+        conflict = unit_propagate(formula, assignment)
+        if conflict:
+            if decision_level == 0:
+                return False, None  # UNSAT
+            backtrack_level = analyze_conflict(conflict)
+            learned_clause = derive_learned_clause(conflict)
+            formula.add_clause(learned_clause)
+            backtrack(backtrack_level)
+        else:
+            literal = choose_literal(formula, assignment)
+            decision_level += 1
+            assignment[abs(literal)] = literal > 0
+
+    return True, assignment
+```
+
+### 3. Approximation Algorithms
+
+#### Random Walk
+```python
+def random_walk_sat(formula, max_flips):
+    """
+    Probabilistic SAT solving
+    May not find solution even if one exists
+    """
+    assignment = random_assignment()
+
+    for _ in range(max_flips):
+        if is_satisfied(formula, assignment):
+            return True, assignment
+
+        clause = choose_unsatisfied_clause(formula, assignment)
+        var = random_variable_from_clause(clause)
+        assignment[var] = not assignment[var]
+
+    return False, None
+```
+
+## Applications
+
+### 1. Hardware Verification
+- Circuit equivalence checking
+- Model checking
+- Formal verification
+
+### 2. Software Analysis
+- Bug finding
+- Test generation
+- Program verification
+
+### 3. AI Planning
+- Action sequence verification
+- Goal reachability
+- Resource allocation
+
+## Practical Considerations
+
+### 1. Problem Encoding
+```python
+def encode_graph_coloring_to_sat(graph, colors):
+    """
+    Example: Reducing graph coloring to SAT
+    """
+    clauses = []
+
+    # At least one color per vertex
+    for v in graph.vertices:
+        clauses.append([f"x_{v}_{c}" for c in colors])
+
+    # At most one color per vertex
+    for v in graph.vertices:
+        for c1 in colors:
+            for c2 in colors:
+                if c1 < c2:
+                    clauses.append([f"-x_{v}_{c1}",
+                                  f"-x_{v}_{c2}"])
+
+    # Adjacent vertices have different colors
+    for (v1, v2) in graph.edges:
+        for c in colors:
+            clauses.append([f"-x_{v1}_{c}",
+                          f"-x_{v2}_{c}"])
+
+    return clauses
+```
+
+### 2. Optimization Techniques
+- Variable ordering heuristics
+- Clause learning strategies
+- Restart policies
+
+### 3. Preprocessing
+- Unit propagation
+- Pure literal elimination
+- Subsumption
+
+## Advanced Topics
+
+### 1. QBF (Quantified Boolean Formulas)
+- Extension of SAT with quantifiers
+- PSPACE-complete
+- Applications in verification
+
+### 2. MaxSAT
+- Optimization version of SAT
+- Find assignment satisfying maximum clauses
+- Applications in optimization
+
+### 3. #SAT
+- Counting version of SAT
+- Count number of satisfying assignments
+- Applications in probabilistic reasoning
+
+## Research Directions
+
+### 1. Algorithm Improvements
+- Better learning schemes
+- Parallel SAT solving
+- Portfolio approaches
+
+### 2. Applications
+- Cryptanalysis
+- Machine learning
+- Constraint solving
+
+### 3. Theoretical Aspects
+- Phase transitions
+- Proof complexity
+- Structure of hard instances
+
+## Best Practices
+
+### 1. Problem Formulation
+- Minimize variables and clauses
+- Use natural encodings
+- Consider symmetry breaking
+
+### 2. Solver Selection
+- Problem characteristics
+- Performance requirements
+- Available resources
+
+### 3. Solution Analysis
+- Verify solutions
+- Analyze unsatisfiable cores
+- Study solving patterns
