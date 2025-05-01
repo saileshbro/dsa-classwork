@@ -2,6 +2,20 @@ import random
 import matplotlib.pyplot as plt
 import numpy as np
 from time import time
+import seaborn as sns
+from typing import List, Tuple, Optional, Dict
+from dataclasses import dataclass
+import pandas as pd
+
+@dataclass
+class AlgorithmStats:
+    """Statistics for algorithm performance"""
+    name: str
+    solution: List[int]
+    states_checked: int
+    time_taken: float
+    convergence_path: List[List[int]]
+    success_rate: float = 0.0
 
 def is_safe(board, row, col):
     for i in range(row):
@@ -180,6 +194,51 @@ def min_conflicts_n_queens(n=8, max_steps=1000):
     print(f"States checked: {states_checked}")
     return None, states_checked, states_visited
 
+def solve_n_queens_dynamic(n=8):
+    """Dynamic Programming approach to N-Queens"""
+    def get_first_solution(n, row=0, queens=None, diagonal1=None, diagonal2=None):
+        if queens is None:
+            queens = set()
+        if diagonal1 is None:
+            diagonal1 = set()
+        if diagonal2 is None:
+            diagonal2 = set()
+
+        if row == n:
+            # Convert the queens set into a board configuration
+            board = [-1] * n
+            for r, c in enumerate(sorted(queens)):
+                board[r] = c
+            return board
+
+        for col in range(n):
+            if (col not in queens and
+                (row + col) not in diagonal1 and
+                (row - col) not in diagonal2):
+
+                queens.add(col)
+                diagonal1.add(row + col)
+                diagonal2.add(row - col)
+
+                result = get_first_solution(n, row + 1, queens, diagonal1, diagonal2)
+                if result:
+                    return result
+
+                queens.remove(col)
+                diagonal1.remove(row + col)
+                diagonal2.remove(row - col)
+        return None
+
+    start_time = time()
+    board = get_first_solution(n)
+    time_taken = time() - start_time
+
+    if board:
+        print("Dynamic Programming Solution:", board)
+        print(f"Time taken: {time_taken:.4f} seconds")
+        return board, n, [board]  # Return single state
+    return None, 0, []
+
 def visualize_board(board, n=8):
     """Visualize a chessboard with queens"""
     board_visual = np.zeros((n, n))
@@ -211,6 +270,42 @@ def visualize_board(board, n=8):
 
     plt.title(f"{n}-Queens Solution")
 
+    return plt
+
+def enhanced_visualize_board(board, n=8, title="N-Queens Solution"):
+    """Enhanced board visualization with better aesthetics"""
+    # Changed from seaborn to default style
+    plt.style.use('default')
+    fig = plt.figure(figsize=(10, 10))
+    board_visual = np.zeros((n, n))
+
+    # Set queen positions and create enhanced chessboard pattern
+    for i, col in enumerate(board):
+        if col != -1:
+            board_visual[i, col] = 1
+
+    # Create an enhanced chessboard pattern
+    for i in range(n):
+        for j in range(n):
+            if (i + j) % 2 == 1:
+                if board_visual[i, j] == 0:
+                    board_visual[i, j] = 0.3
+
+    plt.imshow(board_visual, cmap='RdYlBu_r', interpolation='nearest')
+
+    # Add grid with enhanced styling
+    plt.grid(True, color='black', linewidth=1.5, alpha=0.3)
+    plt.xticks(np.arange(-.5, n, 1), [])
+    plt.yticks(np.arange(-.5, n, 1), [])
+
+    # Add queens with enhanced styling
+    for i, col in enumerate(board):
+        if col != -1:
+            plt.text(col, i, '♕', fontsize=30,
+                    ha='center', va='center',
+                    color='darkblue')
+
+    plt.title(title, fontsize=16, pad=20)
     return plt
 
 def visualize_state_diagram(states, n=8, max_states=10):
@@ -253,69 +348,238 @@ def visualize_state_diagram(states, n=8, max_states=10):
 
     return plt
 
-def compare_algorithms(n=8):
-    """Compare all three algorithms"""
-    print(f"Solving {n}-Queens Problem with Multiple Algorithms")
+def visualize_algorithm_comparison(stats: List[AlgorithmStats], n: int):
+    """Create comprehensive visualization of algorithm comparisons"""
+    # Changed from seaborn to default style
+    plt.style.use('default')
+    fig = plt.figure(figsize=(20, 15))
+
+    # Performance metrics subplot
+    plt.subplot(2, 2, 1)
+    algorithms = [stat.name for stat in stats]
+    times = [stat.time_taken for stat in stats]
+    states = [stat.states_checked for stat in stats]
+
+    x = np.arange(len(algorithms))
+    width = 0.35
+
+    ax1 = plt.gca()
+    ax2 = ax1.twinx()
+
+    bars1 = ax1.bar(x - width/2, times, width, label='Time (s)',
+                    color='skyblue', alpha=0.7)
+    bars2 = ax2.bar(x + width/2, states, width, label='States',
+                    color='lightcoral', alpha=0.7)
+
+    ax1.set_ylabel('Time (seconds)', fontsize=12)
+    ax2.set_ylabel('States Checked', fontsize=12)
+    plt.title('Algorithm Performance Comparison', fontsize=14, pad=20)
+    ax1.set_xticks(x)
+    ax1.set_xticklabels(algorithms, rotation=45)
+
+    # Add value labels on bars
+    for bars in [bars1, bars2]:
+        for bar in bars:
+            height = bar.get_height()
+            plt.text(bar.get_x() + bar.get_width()/2., height,
+                    f'{height:.2f}', ha='center', va='bottom')
+
+    ax1.legend(loc='upper left')
+    ax2.legend(loc='upper right')
+
+    # Success rate subplot with enhanced styling
+    plt.subplot(2, 2, 2)
+    success_rates = [stat.success_rate for stat in stats]
+    bars = plt.bar(algorithms, success_rates, color='lightgreen', alpha=0.7)
+
+    # Add value labels on bars
+    for bar in bars:
+        height = bar.get_height()
+        plt.text(bar.get_x() + bar.get_width()/2., height,
+                f'{height:.1f}%', ha='center', va='bottom')
+
+    plt.ylabel('Success Rate (%)', fontsize=12)
+    plt.title('Algorithm Success Rates', fontsize=14, pad=20)
+    plt.xticks(rotation=45)
+
+    # State space exploration subplot with enhanced styling
+    plt.subplot(2, 2, (3, 4))
+    colors = ['#FF9999', '#66B2FF', '#99FF99', '#FFCC99']
+    for stat, color in zip(stats, colors):
+        path_lengths = [len(state) for state in stat.convergence_path[:100]]
+        plt.plot(path_lengths, label=stat.name, color=color,
+                linewidth=2, alpha=0.7)
+
+    plt.xlabel('Step', fontsize=12)
+    plt.ylabel('Path Length', fontsize=12)
+    plt.title('State Space Exploration', fontsize=14, pad=20)
+    plt.legend(fontsize=10)
+    plt.grid(True, alpha=0.3)
+
+    plt.tight_layout()
+    plt.savefig('algorithm_comparison.png', bbox_inches='tight', dpi=300)
+    plt.close()
+
+def compare_algorithms(n=8, runs=10):
+    """Enhanced comparison of all algorithms including dynamic programming"""
+    print(f"Solving {n}-Queens Problem with Multiple Approaches")
     print("-" * 50)
 
-    # Run backtracking
-    print("\nRunning Backtracking Algorithm:")
-    start_time = time()
-    solution1, states1, states_visited1 = solve_n_queens_backtracking(n)
-    time1 = time() - start_time
+    # Collect performance statistics for all algorithms
+    algorithms = [
+        (solve_n_queens_backtracking, "Backtracking"),
+        (las_vegas_n_queens, "Las Vegas"),
+        (min_conflicts_n_queens, "Min-Conflicts"),
+        (solve_n_queens_dynamic, "Dynamic Programming")
+    ]
 
-    # Run Las Vegas
-    print("\nRunning Las Vegas Algorithm:")
-    start_time = time()
-    solution2, states2, states_visited2 = las_vegas_n_queens(n)
-    time2 = time() - start_time
+    stats = []
+    for algo_func, name in algorithms:
+        print(f"\nRunning {name} Algorithm:")
+        successes = 0
+        total_states = 0
+        total_time = 0
+        solutions = []
+        all_paths = []
 
-    # Run Min-Conflicts
-    print("\nRunning Min-Conflicts Algorithm:")
-    start_time = time()
-    solution3, states3, states_visited3 = min_conflicts_n_queens(n)
-    time3 = time() - start_time
+        for _ in range(runs):
+            start_time = time()
+            solution, states, path = algo_func(n)
+            end_time = time() - start_time
 
-    # Print comparison
-    print("\nAlgorithm Comparison:")
-    print("-" * 50)
-    print(f"{'Algorithm':<20} {'States Checked':<15} {'Time (s)':<10}")
-    print("-" * 50)
-    print(f"{'Backtracking':<20} {states1:<15} {time1:.6f}")
-    print(f"{'Las Vegas':<20} {states2:<15} {time2:.6f}")
-    print(f"{'Min-Conflicts':<20} {states3:<15} {time3:.6f}")
+            if solution:
+                successes += 1
+                solutions.append(solution)
+                all_paths.append(path)
+            total_states += states
+            total_time += end_time
 
-    # Visualize solutions
-    if solution1:
-        plt.figure(1)
-        visualize_board(solution1, n)
-        plt.savefig('backtracking_solution.png')
+        # Use the first successful solution for visualization
+        final_solution = solutions[0] if solutions else None
+        final_path = all_paths[0] if all_paths else []
 
-        plt.figure(2)
-        visualize_state_diagram(states_visited1, n)
-        plt.savefig('backtracking_states.png')
+        stat = AlgorithmStats(
+            name=name,
+            solution=final_solution,
+            states_checked=total_states // runs,
+            time_taken=total_time / runs,
+            convergence_path=final_path,
+            success_rate=(successes / runs) * 100
+        )
+        stats.append(stat)
 
-    if solution2:
-        plt.figure(3)
-        visualize_board(solution2, n)
-        plt.savefig('las_vegas_solution.png')
+        # Generate individual algorithm visualizations
+        if stat.solution:
+            enhanced_visualize_board(
+                stat.solution,
+                n,
+                f"{name} Solution"
+            ).savefig(f'{name.lower().replace(" ", "_")}_solution.png')
 
-        plt.figure(4)
-        visualize_state_diagram(states_visited2, n)
-        plt.savefig('las_vegas_states.png')
+            visualize_state_diagram(
+                stat.convergence_path,
+                n
+            ).savefig(f'{name.lower().replace(" ", "_")}_states.png')
 
-    if solution3:
-        plt.figure(5)
-        visualize_board(solution3, n)
-        plt.savefig('min_conflicts_solution.png')
+    # Generate comprehensive comparison visualization
+    visualize_algorithm_comparison(stats, n)
 
-        plt.figure(6)
-        visualize_state_diagram(states_visited3, n)
-        plt.savefig('min_conflicts_states.png')
+    # Print detailed comparison
+    print("\nDetailed Algorithm Comparison:")
+    print("-" * 80)
+    print(f"{'Algorithm':<20} {'Success Rate':<15} {'Avg States':<15} {'Avg Time (s)':<15}")
+    print("-" * 80)
 
-    plt.show()
+    for stat in stats:
+        print(f"{stat.name:<20} {stat.success_rate:>6.2f}% {stat.states_checked:>14} {stat.time_taken:>14.6f}")
 
-# Run the comparison
+    return stats
+
+def plot_comparative_analysis(results_by_size: Dict[int, List[AlgorithmStats]]):
+    """Create comparative visualizations across different board sizes"""
+    plt.style.use('default')
+    board_sizes = sorted(list(results_by_size.keys()))
+    algorithms = ["Backtracking", "Las Vegas", "Min-Conflicts", "Dynamic Programming"]
+    colors = ['#FF6B6B', '#4ECDC4', '#45B7D1', '#96CEB4']
+
+    # Create subplots
+    fig = plt.figure(figsize=(20, 15))
+
+    # 1. Execution Time Analysis
+    ax1 = plt.subplot(2, 2, 1)
+    for i, algo in enumerate(algorithms):
+        times = [results_by_size[size][i].time_taken * 1000 for size in board_sizes]  # Convert to ms
+        plt.plot(board_sizes, times, marker='o', label=algo, color=colors[i], linewidth=2)
+
+    plt.xlabel('Board Size (N×N)', fontsize=12)
+    plt.ylabel('Execution Time (ms)', fontsize=12)
+    plt.title('Algorithm Execution Time Comparison', fontsize=14, pad=20)
+    plt.legend(fontsize=10)
+    plt.grid(True, alpha=0.3)
+    plt.yscale('log')
+
+    # 2. States Explored Analysis
+    ax2 = plt.subplot(2, 2, 2)
+    for i, algo in enumerate(algorithms):
+        states = [results_by_size[size][i].states_checked for size in board_sizes]
+        plt.plot(board_sizes, states, marker='o', label=algo, color=colors[i], linewidth=2)
+
+    plt.xlabel('Board Size (N×N)', fontsize=12)
+    plt.ylabel('States Explored', fontsize=12)
+    plt.title('States Exploration Comparison', fontsize=14, pad=20)
+    plt.legend(fontsize=10)
+    plt.grid(True, alpha=0.3)
+    plt.yscale('log')
+
+    # 3. Success Rate Analysis
+    ax3 = plt.subplot(2, 2, 3)
+    for i, algo in enumerate(algorithms):
+        success_rates = [results_by_size[size][i].success_rate for size in board_sizes]
+        plt.plot(board_sizes, success_rates, marker='o', label=algo, color=colors[i], linewidth=2)
+
+    plt.xlabel('Board Size (N×N)', fontsize=12)
+    plt.ylabel('Success Rate (%)', fontsize=12)
+    plt.title('Algorithm Success Rate Comparison', fontsize=14, pad=20)
+    plt.legend(fontsize=10)
+    plt.grid(True, alpha=0.3)
+
+    # 4. Efficiency Ratio (States/ms)
+    ax4 = plt.subplot(2, 2, 4)
+    for i, algo in enumerate(algorithms):
+        efficiency = []
+        for size in board_sizes:
+            time_ms = results_by_size[size][i].time_taken * 1000
+            if time_ms > 0:
+                efficiency.append(results_by_size[size][i].states_checked / time_ms)
+            else:
+                efficiency.append(0)
+        plt.plot(board_sizes, efficiency, marker='o', label=algo, color=colors[i], linewidth=2)
+
+    plt.xlabel('Board Size (N×N)', fontsize=12)
+    plt.ylabel('States Explored per Millisecond', fontsize=12)
+    plt.title('Algorithm Efficiency Comparison', fontsize=14, pad=20)
+    plt.legend(fontsize=10)
+    plt.grid(True, alpha=0.3)
+    plt.yscale('log')
+
+    plt.tight_layout()
+    plt.savefig('scaling_analysis.png', dpi=300, bbox_inches='tight')
+    plt.close()
+
+def run_comparative_analysis():
+    """Run analysis for different board sizes and generate comparative visualizations"""
+    results_by_size = {}
+    board_sizes = [8, 12, 16, 20, 24]
+    runs = 10
+
+    for size in board_sizes:
+        print(f"\nAnalyzing {size}x{size} board...")
+        stats = compare_algorithms(size, runs)
+        results_by_size[size] = stats
+
+    plot_comparative_analysis(results_by_size)
+    print("\nComparative analysis completed. Visualizations saved as 'scaling_analysis.png'")
+
 if __name__ == "__main__":
-    compare_algorithms(8)
+    run_comparative_analysis()
 
